@@ -1,0 +1,30 @@
+name: Weekly Incident Summary
+
+on:
+  schedule:
+    - cron: '0 11 * * 5'  # Friday 14:00 Israel time (UTC+3)
+  workflow_dispatch:       # Manual trigger for testing
+
+jobs:
+  send-summary:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weekly summary
+        env:
+          MONDAY_API_KEY:     ${{ secrets.MONDAY_API_KEY }}
+          BOARD_ID:           ${{ secrets.BOARD_ID }}
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_FROM:         ${{ secrets.GMAIL_FROM }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RON_EMAIL:          ${{ secrets.RON_EMAIL }}
+        run: python weekly_summary.py
