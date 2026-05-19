@@ -212,7 +212,7 @@ def main():
 
     print("Sending email...")
     send_email(RON_EMAIL, subject, html)
-    print(f"Done. Summary sent to {RON_EMAIL}.")
+    print("Done. Summary sent.")
 
 
 if __name__ == "__main__":

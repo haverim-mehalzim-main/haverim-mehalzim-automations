@@ -4,6 +4,7 @@ import requests
 from datetime import datetime, timedelta
 
 MONDAY_URL = "https://api.monday.com/v2"
+_TIMEOUT   = 30
 
 
 def _headers():
@@ -14,14 +15,12 @@ def _run_query(query, variables=None):
     payload = {"query": query}
     if variables:
         payload["variables"] = variables
-    response = requests.post(MONDAY_URL, json=payload, headers=_headers())
+    response = requests.post(MONDAY_URL, json=payload, headers=_headers(), timeout=_TIMEOUT)
     if response.status_code != 200:
-        print(f"HTTP {response.status_code}: {response.text}")
-        return None
+        raise RuntimeError(f"Monday API HTTP {response.status_code}")
     data = response.json()
     if "errors" in data:
-        print("GraphQL error:", data["errors"])
-        return None
+        raise RuntimeError(f"Monday GraphQL error: {data['errors']}")
     return data["data"]
 
 
@@ -46,8 +45,6 @@ def fetch_board_items(board_id):
     }
     """
     data = _run_query(query, {"board_id": [str(board_id)]})
-    if not data:
-        return []
     items = data["boards"][0]["items_page"]["items"]
     results = []
     for item in items:
@@ -73,7 +70,7 @@ def fetch_item_by_id(item_id):
     }
     """
     data = _run_query(query, {"item_id": [str(item_id)]})
-    if not data or not data["items"]:
+    if not data["items"]:
         return None
     item = data["items"][0]
     row = {"id": item["id"], "name": item["name"]}
@@ -111,9 +108,7 @@ def create_board_item(board_id, item_name, column_values: dict):
         "item_name":     item_name,
         "column_values": json.dumps(column_values),
     })
-    if data:
-        return data["create_item"]["id"]
-    return None
+    return data["create_item"]["id"]
 
 
 # ── Weekly summary (incidents board) ─────────────────────────────────────────
@@ -163,15 +158,16 @@ def fetch_last_week_incidents():
             MONDAY_URL,
             json={"query": _build_incidents_query(board_id)},
             headers=_headers(),
+            timeout=_TIMEOUT,
         )
 
         if response.status_code != 200:
-            print(f"HTTP {response.status_code}: {response.text}")
+            print(f"Monday API HTTP {response.status_code}")
             return None
 
         data = response.json()
         if "errors" in data:
-            print("GraphQL error:", data["errors"])
+            print("Monday GraphQL error (fetch incidents)")
             return None
 
         items = data["data"]["boards"][0]["items_page"]["items"]

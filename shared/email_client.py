@@ -1,9 +1,11 @@
 import os
 import requests
 
+_TIMEOUT = 30
+
 
 def send_email(to_email, subject, html_body):
-    api_key   = os.getenv("BREVO_API_KEY")
+    api_key    = os.getenv("BREVO_API_KEY")
     from_email = os.getenv("GMAIL_FROM")
 
     response = requests.post(
@@ -15,7 +17,7 @@ def send_email(to_email, subject, html_body):
             "subject":     subject,
             "htmlContent": html_body,
         },
+        timeout=_TIMEOUT,
     )
     if not response.ok:
-        print("Brevo error:", response.status_code, response.text)
-    response.raise_for_status()
+        raise RuntimeError(f"Brevo API HTTP {response.status_code}")

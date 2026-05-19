@@ -27,7 +27,7 @@ jobs:
           BREVO_API_KEY:         ${{ secrets.BREVO_API_KEY }}
           GMAIL_FROM:            ${{ secrets.GMAIL_FROM }}
           WHATSABLE_API_KEY:     ${{ secrets.WHATSABLE_API_KEY }}
-          WHATSABLE_GROUP_ID:    ${{ secrets.WHATSABLE_GROUP_ID }}
           PHONE_NUMBER:          ${{ secrets.PHONE_NUMBER }}
           ANTHROPIC_API_KEY:     ${{ secrets.ANTHROPIC_API_KEY }}
+          ADMIN_EMAIL:           ${{ secrets.ADMIN_EMAIL }}
         run: python -m automations.volunteer_onboarding.main

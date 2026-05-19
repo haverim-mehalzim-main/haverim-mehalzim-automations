@@ -1,4 +1,5 @@
 import os
+import traceback
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -11,11 +12,11 @@ load_dotenv()
 
 REGISTRATION_BOARD_ID = os.getenv("REGISTRATION_BOARD_ID")
 VOLUNTEERS_BOARD_ID   = os.getenv("VOLUNTEERS_BOARD_ID")
+ADMIN_EMAIL           = os.getenv("ADMIN_EMAIL")
 
-# Hardcoded — not secrets, just Monday column identifiers
+# Monday column IDs — not secrets, safe to hardcode in a public repo
 PROCESSED_COLUMN_ID   = "boolean_mm3gnk59"
 
-# Volunteers board column IDs
 COL_SUMMARY           = "summary_mkmk881m"
 COL_IS_ONBOARDED      = "status"
 COL_SIGNED_AGREEMENT  = "status_mkmvpz7w"
@@ -36,6 +37,25 @@ COL_ADDRESS           = "text_mm1gym24"
 COL_REGISTRATION_LINK = "text_mm1gd18r"
 COL_CREATED_AT        = "date_mkmkq362"
 COL_UPDATED_AT        = "date_mkmkagv1"
+COL_APPROVAL_CONTENT  = "color_mm1gbzk6"
+COL_APPROVAL_LOCATION = "color_mm1gh4pt"
+COL_MORE_DETAILS      = "text_mkmksedk"
+
+_REQUIRED_ENV = [
+    "MONDAY_API_KEY",
+    "REGISTRATION_BOARD_ID",
+    "VOLUNTEERS_BOARD_ID",
+    "BREVO_API_KEY",
+    "GMAIL_FROM",
+    "ANTHROPIC_API_KEY",
+    "ADMIN_EMAIL",
+]
+
+
+def _validate_env():
+    missing = [k for k in _REQUIRED_ENV if not os.getenv(k)]
+    if missing:
+        raise EnvironmentError(f"Missing required environment variables: {', '.join(missing)}")
 
 
 def _parse_date(date_str):
@@ -54,22 +74,24 @@ def is_processed(item):
 
 def extract_volunteer(item):
     return {
-        "id":         item.get("id", ""),
-        "name":       item.get("name", ""),
-        "location":   item.get("short_text8m97hmsb", ""),
-        "background": item.get("long_text_mkqyb3me", ""),
-        "military":   item.get("short_textryojenfq", ""),
-        "interests":  " | ".join(filter(None, [
+        "id":               item.get("id", ""),
+        "name":             item.get("name", ""),
+        "location":         item.get("short_text8m97hmsb", ""),
+        "background":       item.get("long_text_mkqyb3me", ""),
+        "military":         item.get("short_textryojenfq", ""),
+        "interests":        " | ".join(filter(None, [
             item.get("multi_selectvzgzazus", ""),
             item.get("multi_selectxlqwrsg1", ""),
             item.get("multi_selectuhal084n", ""),
             item.get("multi_selecthdfth0p3", ""),
         ])),
-        "linkedin":   item.get("linklmimmuok", ""),
-        "phone":      item.get("phonef70cyv01", ""),
-        "email":      item.get("emailc3bvh0j2", ""),
-        "languages":  item.get("dropdown_mkqy9ym1", ""),
-        "created_at": item.get("created_at", ""),
+        "linkedin":         item.get("linklmimmuok", ""),
+        "phone":            item.get("phonef70cyv01", ""),
+        "email":            item.get("emailc3bvh0j2", ""),
+        "languages":        item.get("dropdown_mkqy9ym1", ""),
+        "approval_content": item.get("single_select0lj8mys", ""),
+        "approval_location":item.get("single_selectre9vtk2", ""),
+        "created_at":       item.get("created_at", ""),
     }
 
 
@@ -138,12 +160,33 @@ def build_whatsapp_message(volunteer):
 https://haverim-mehalzim.monday.com/boards/1752554957"""
 
 
+def _match_departments_with_retry(volunteer):
+    result = match_departments(volunteer)
+    if not result:
+        print("  LLM returned empty — retrying once...")
+        result = match_departments(volunteer)
+    if not result:
+        print("  LLM retry also failed — proceeding with empty fields")
+        return {}
+    return result
+
+
+def _send_error_alert(name, error_details):
+    subject = f"[Automation Error] Failed to process volunteer: {name}"
+    body = f"""<!DOCTYPE html><html><body>
+<p>The volunteer onboarding automation failed for <strong>{name}</strong>.</p>
+<pre style="background:#f5f5f5;padding:12px;border-radius:4px;">{error_details}</pre>
+<p>Please check the <a href="https://github.com/liranneta23/haverim-mehalzim-automations/actions">GitHub Actions logs</a>
+and process this volunteer manually if needed.</p>
+</body></html>"""
+    try:
+        send_email(ADMIN_EMAIL, subject, body)
+    except Exception:
+        print("  Also failed to send error alert email")
+
+
 def build_volunteer_columns(volunteer, llm_result):
-    created_date      = _parse_date(volunteer.get("created_at"))
-    registration_link = (
-        f"https://haverim-mehalzim.monday.com/boards/{REGISTRATION_BOARD_ID}"
-        f"/pulses/{volunteer['id']}"
-    )
+    created_date = _parse_date(volunteer.get("created_at"))
 
     cols = {
         COL_SUMMARY:           llm_result.get("summary", ""),
@@ -162,8 +205,20 @@ def build_volunteer_columns(volunteer, llm_result):
         COL_SOCIAL_MEDIA:      volunteer.get("linkedin", ""),
         COL_IS_DONOR:          {"label": "No"},
         COL_ADDRESS:           volunteer.get("location", ""),
-        COL_REGISTRATION_LINK: registration_link,
+        COL_REGISTRATION_LINK: (
+            f"https://haverim-mehalzim.monday.com/boards/{REGISTRATION_BOARD_ID}"
+            f"/pulses/{volunteer['id']}"
+        ),
+        COL_MORE_DETAILS:      "",
     }
+
+    approval_content = volunteer.get("approval_content", "")
+    if approval_content:
+        cols[COL_APPROVAL_CONTENT] = {"label": approval_content}
+
+    approval_location = volunteer.get("approval_location", "")
+    if approval_location:
+        cols[COL_APPROVAL_LOCATION] = {"label": approval_location}
 
     if created_date:
         cols[COL_JOINED_AT]  = created_date
@@ -174,49 +229,61 @@ def build_volunteer_columns(volunteer, llm_result):
 
 
 def main():
+    _validate_env()
     print("Checking for new volunteer registrations...")
 
-    all_items   = fetch_board_items(REGISTRATION_BOARD_ID)
-    unprocessed = [item for item in all_items if not is_processed(item)]
+    try:
+        all_items = fetch_board_items(REGISTRATION_BOARD_ID)
+    except Exception:
+        error_details = traceback.format_exc()
+        print("Failed to fetch board items — sending alert")
+        _send_error_alert("N/A", f"Failed to fetch board items:\n{error_details}")
+        return
 
+    unprocessed = [item for item in all_items if not is_processed(item)]
     print(f"Found {len(unprocessed)} unprocessed registration(s).")
+
+    failed_ids = []
 
     for item in unprocessed:
         volunteer = extract_volunteer(item)
-        name  = volunteer["name"]
-        email = volunteer["email"]
+        item_id   = item["id"]
 
-        print(f"Processing: {name}")
+        print(f"Processing item {item_id}")
 
-        # Step 1: Welcome email
-        send_email(
-            email,
-            "איזה כיף שהצטרפת אלינו! 🙌 | Welcome to our Community!",
-            build_welcome_email(volunteer),
-        )
-        print(f"  ✓ Welcome email sent to {email}")
+        try:
+            send_email(
+                volunteer["email"],
+                "איזה כיף שהצטרפת אלינו! 🙌 | Welcome to our Community!",
+                build_welcome_email(volunteer),
+            )
+            print(f"  ✓ Welcome email sent")
 
-        # Step 2: WhatsApp notification
-        send_whatsapp_message(build_whatsapp_message(volunteer))
-        print(f"  ✓ WhatsApp notification sent")
+            send_whatsapp_message(build_whatsapp_message(volunteer))
+            print(f"  ✓ WhatsApp notification sent")
 
-        # Step 3: LLM department matching
-        llm_result = match_departments(volunteer)
-        print(f"  ✓ LLM processing done")
+            llm_result = _match_departments_with_retry(volunteer)
+            print(f"  ✓ LLM processing done")
 
-        # Step 4: Create item in volunteers board
-        create_board_item(
-            VOLUNTEERS_BOARD_ID,
-            name,
-            build_volunteer_columns(volunteer, llm_result),
-        )
-        print(f"  ✓ Created item in volunteers board")
+            create_board_item(
+                VOLUNTEERS_BOARD_ID,
+                volunteer["name"],
+                build_volunteer_columns(volunteer, llm_result),
+            )
+            print(f"  ✓ Created item in volunteers board")
 
-        # Step 5: Mark as processed in registration board
-        mark_item_processed(item["id"], REGISTRATION_BOARD_ID, PROCESSED_COLUMN_ID)
-        print(f"  ✓ Marked as processed")
+            # Mark processed only after all steps succeed
+            mark_item_processed(item_id, REGISTRATION_BOARD_ID, PROCESSED_COLUMN_ID)
+            print(f"  ✓ Marked as processed — done: item {item_id}")
 
-        print(f"  Done: {name}")
+        except Exception:
+            error_details = traceback.format_exc()
+            print(f"  ERROR on item {item_id} — sending alert")
+            failed_ids.append(item_id)
+            _send_error_alert(volunteer["name"], error_details)
+
+    if failed_ids:
+        print(f"\nFailed to process {len(failed_ids)} item(s): {', '.join(failed_ids)}")
 
     print("Finished.")
 

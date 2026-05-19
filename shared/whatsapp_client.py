@@ -1,6 +1,8 @@
 import os
 import requests
 
+_TIMEOUT = 30
+
 
 def send_whatsapp_message(message: str):
     api_key = os.getenv("WHATSABLE_API_KEY")
@@ -10,7 +12,7 @@ def send_whatsapp_message(message: str):
         "https://dashboard.whatsable.app/api/whatsapp/messages/v2.0.0/send",
         headers={"Authorization": api_key, "Content-Type": "application/json"},
         json={"to": phone, "text": message},
+        timeout=_TIMEOUT,
     )
     if not response.ok:
-        print(f"Whatsable error: {response.status_code} {response.text}")
-    response.raise_for_status()
+        raise RuntimeError(f"Whatsable API HTTP {response.status_code}")

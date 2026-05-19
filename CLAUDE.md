@@ -55,6 +55,6 @@ For local development, create a `.env` file (already in `.gitignore`) with your 
 | `GMAIL_FROM` | All automations |
 | `RON_EMAIL` | Weekly summary |
 | `ANTHROPIC_API_KEY` | Volunteer onboarding |
+| `ADMIN_EMAIL` | Volunteer onboarding (error alert recipient) |
 | `WHATSABLE_API_KEY` | Volunteer onboarding |
-| `WHATSABLE_GROUP_ID` | Volunteer onboarding |
 | `PHONE_NUMBER` | Volunteer onboarding (WhatsApp notification recipient) |
