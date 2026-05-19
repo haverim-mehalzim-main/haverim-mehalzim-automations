@@ -26,4 +26,4 @@ jobs:
           BREVO_API_KEY:    ${{ secrets.BREVO_API_KEY }}
           GMAIL_FROM:       ${{ secrets.GMAIL_FROM }}
           RON_EMAIL:        ${{ secrets.RON_EMAIL }}
-        run: python weekly_summary.py
+        run: python -m automations.weekly_summary.main
