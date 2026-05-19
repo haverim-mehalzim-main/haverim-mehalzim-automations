@@ -1,13 +1,9 @@
 name: Volunteer Onboarding
 
 on:
-  repository_dispatch:
-    types: [volunteer-registration]
-  workflow_dispatch:
-    inputs:
-      item_id:
-        description: 'Monday item ID (for manual testing)'
-        required: true
+  schedule:
+    - cron: '*/5 * * * *'  # every 5 minutes
+  workflow_dispatch:        # manual trigger for testing
 
 jobs:
   onboard:
@@ -28,11 +24,10 @@ jobs:
           MONDAY_API_KEY:        ${{ secrets.MONDAY_API_KEY }}
           REGISTRATION_BOARD_ID: ${{ secrets.REGISTRATION_BOARD_ID }}
           VOLUNTEERS_BOARD_ID:   ${{ secrets.VOLUNTEERS_BOARD_ID }}
-          PROCESSED_COLUMN_ID:   ${{ secrets.PROCESSED_COLUMN_ID }}
           BREVO_API_KEY:         ${{ secrets.BREVO_API_KEY }}
           GMAIL_FROM:            ${{ secrets.GMAIL_FROM }}
           WHATSABLE_API_KEY:     ${{ secrets.WHATSABLE_API_KEY }}
           WHATSABLE_GROUP_ID:    ${{ secrets.WHATSABLE_GROUP_ID }}
+          PHONE_NUMBER:          ${{ secrets.PHONE_NUMBER }}
           ANTHROPIC_API_KEY:     ${{ secrets.ANTHROPIC_API_KEY }}
-          VOLUNTEER_ITEM_ID:     ${{ github.event.client_payload.item_id || github.event.inputs.item_id }}
         run: python -m automations.volunteer_onboarding.main

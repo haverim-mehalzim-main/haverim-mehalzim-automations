@@ -27,6 +27,37 @@ def _run_query(query, variables=None):
 
 # ── Generic helpers ───────────────────────────────────────────────────────────
 
+def fetch_board_items(board_id):
+    query = """
+    query($board_id: [ID!]) {
+      boards(ids: $board_id) {
+        items_page(limit: 500) {
+          items {
+            id
+            name
+            created_at
+            column_values {
+              id
+              text
+            }
+          }
+        }
+      }
+    }
+    """
+    data = _run_query(query, {"board_id": [str(board_id)]})
+    if not data:
+        return []
+    items = data["boards"][0]["items_page"]["items"]
+    results = []
+    for item in items:
+        row = {"id": item["id"], "name": item["name"], "created_at": item.get("created_at", "")}
+        for cv in item["column_values"]:
+            row[cv["id"]] = cv["text"]
+        results.append(row)
+    return results
+
+
 def fetch_item_by_id(item_id):
     query = """
     query($item_id: [ID!]) {
