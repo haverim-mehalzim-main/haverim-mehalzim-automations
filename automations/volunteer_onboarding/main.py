@@ -49,6 +49,8 @@ _REQUIRED_ENV = [
     "GMAIL_FROM",
     "ANTHROPIC_API_KEY",
     "ADMIN_EMAIL",
+    "WHATSABLE_API_KEY",
+    "PHONE_NUMBER",
 ]
 
 
@@ -160,6 +162,15 @@ def build_whatsapp_message(volunteer):
 https://haverim-mehalzim.monday.com/boards/1752554957"""
 
 
+def _safe_list(value):
+    """Ensure LLM output is always a list, even if Claude returns a string."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value:
+        return [value]
+    return []
+
+
 def _match_departments_with_retry(volunteer):
     result = match_departments(volunteer)
     if not result:
@@ -195,9 +206,9 @@ def build_volunteer_columns(volunteer, llm_result):
         COL_COUNTRY:           llm_result.get("country", ""),
         COL_CITY:              llm_result.get("city", ""),
         COL_REGION:            llm_result.get("region_of_activity", ""),
-        COL_FIELDS:            {"labels": llm_result.get("fields", [])},
-        COL_SKILLS:            ", ".join(llm_result.get("skills", [])),
-        COL_FRTS:              ", ".join(llm_result.get("frts", [])),
+        COL_FIELDS:            {"labels": _safe_list(llm_result.get("fields"))},
+        COL_SKILLS:            ", ".join(_safe_list(llm_result.get("skills"))),
+        COL_FRTS:              ", ".join(_safe_list(llm_result.get("frts"))),
         COL_PHONE:             {"phone": volunteer.get("phone", ""), "countryShortName": ""},
         COL_MILITARY:          volunteer.get("military", ""),
         COL_EMAIL:             volunteer.get("email", ""),
@@ -252,6 +263,9 @@ def main():
         print(f"Processing item {item_id}")
 
         try:
+            if not volunteer["email"]:
+                raise ValueError("Volunteer has no email address — cannot process")
+
             send_email(
                 volunteer["email"],
                 "איזה כיף שהצטרפת אלינו! 🙌 | Welcome to our Community!",
