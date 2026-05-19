@@ -8,3 +8,4 @@ def send_whatsapp_message(message: str):
     group_id = os.getenv("WHATSABLE_GROUP_ID")
 
     print(f"[whatsapp] TODO: send message when API details are provided")
+
