@@ -1,0 +1,38 @@
+name: Volunteer Onboarding
+
+on:
+  repository_dispatch:
+    types: [volunteer-registration]
+  workflow_dispatch:
+    inputs:
+      item_id:
+        description: 'Monday item ID (for manual testing)'
+        required: true
+
+jobs:
+  onboard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run volunteer onboarding
+        env:
+          MONDAY_API_KEY:        ${{ secrets.MONDAY_API_KEY }}
+          REGISTRATION_BOARD_ID: ${{ secrets.REGISTRATION_BOARD_ID }}
+          VOLUNTEERS_BOARD_ID:   ${{ secrets.VOLUNTEERS_BOARD_ID }}
+          PROCESSED_COLUMN_ID:   ${{ secrets.PROCESSED_COLUMN_ID }}
+          BREVO_API_KEY:         ${{ secrets.BREVO_API_KEY }}
+          GMAIL_FROM:            ${{ secrets.GMAIL_FROM }}
+          WHATSABLE_API_KEY:     ${{ secrets.WHATSABLE_API_KEY }}
+          WHATSABLE_GROUP_ID:    ${{ secrets.WHATSABLE_GROUP_ID }}
+          ANTHROPIC_API_KEY:     ${{ secrets.ANTHROPIC_API_KEY }}
+          VOLUNTEER_ITEM_ID:     ${{ github.event.client_payload.item_id || github.event.inputs.item_id }}
+        run: python -m automations.volunteer_onboarding.main
