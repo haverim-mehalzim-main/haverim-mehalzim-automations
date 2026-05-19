@@ -1,8 +1,6 @@
 import os
-import smtplib
+import requests
 from collections import Counter
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
@@ -11,9 +9,9 @@ from shared.monday_client import fetch_last_week_incidents
 
 load_dotenv()
 
-GMAIL_FROM         = os.getenv("GMAIL_FROM")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-RON_EMAIL          = os.getenv("RON_EMAIL")
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+GMAIL_FROM    = os.getenv("GMAIL_FROM")
+RON_EMAIL     = os.getenv("RON_EMAIL")
 
 INCIDENT_TYPES = {
     "רפואי":          "Medical",
@@ -199,15 +197,19 @@ def build_html_summary(incidents, week_start, week_end):
 
 
 def send_email(subject, html_body):
-    msg = MIMEMultipart("alternative")
-    msg["From"]    = GMAIL_FROM
-    msg["To"]      = RON_EMAIL
-    msg["Subject"] = subject
-    msg.attach(MIMEText(html_body, "html"))
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(GMAIL_FROM, GMAIL_APP_PASSWORD)
-        server.send_message(msg)
+    response = requests.post(
+        "https://api.brevo.com/v3/smtp/email",
+        headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
+        json={
+            "sender":      {"email": GMAIL_FROM},
+            "to":          [{"email": RON_EMAIL}],
+            "subject":     subject,
+            "htmlContent": html_body,
+        },
+    )
+    if not response.ok:
+        print("Brevo error:", response.status_code, response.text)
+    response.raise_for_status()
 
 
 def main():

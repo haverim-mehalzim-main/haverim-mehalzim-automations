@@ -21,9 +21,9 @@ jobs:
 
       - name: Run weekly summary
         env:
-          MONDAY_API_KEY:     ${{ secrets.MONDAY_API_KEY }}
-          BOARD_ID:           ${{ secrets.BOARD_ID }}
-          GMAIL_FROM:         ${{ secrets.GMAIL_FROM }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          RON_EMAIL:          ${{ secrets.RON_EMAIL }}
+          MONDAY_API_KEY:   ${{ secrets.MONDAY_API_KEY }}
+          BOARD_ID:         ${{ secrets.BOARD_ID }}
+          BREVO_API_KEY:    ${{ secrets.BREVO_API_KEY }}
+          GMAIL_FROM:       ${{ secrets.GMAIL_FROM }}
+          RON_EMAIL:        ${{ secrets.RON_EMAIL }}
         run: python weekly_summary.py

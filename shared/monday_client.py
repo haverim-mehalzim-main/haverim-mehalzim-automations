@@ -2,7 +2,6 @@ import os
 import requests
 from datetime import datetime, timedelta
 
-BOARD_ID = os.getenv("BOARD_ID")
 MONDAY_URL = "https://api.monday.com/v2"
 
 _COLUMNS = [
@@ -17,7 +16,9 @@ _COLUMNS = [
 
 _COL_IDS = ", ".join(f'"{c}"' for c in _COLUMNS)
 
-_QUERY = """
+
+def _build_query(board_id):
+    return """
 {
   boards(ids: [%s]) {
     items_page(limit: 500) {
@@ -32,16 +33,23 @@ _QUERY = """
     }
   }
 }
-""" % (BOARD_ID, _COL_IDS)
+""" % (board_id, _COL_IDS)
 
 
 def fetch_last_week_incidents():
     api_key = os.getenv("MONDAY_API_KEY")
+    board_id = os.getenv("BOARD_ID")
     headers = {"Authorization": api_key, "Content-Type": "application/json"}
     cutoff = datetime.now() - timedelta(days=7)
 
+    if not board_id:
+        print("BOARD_ID environment variable is not set.")
+        return None
+
+    query = _build_query(board_id)
+
     try:
-        response = requests.post(MONDAY_URL, json={"query": _QUERY}, headers=headers)
+        response = requests.post(MONDAY_URL, json={"query": query}, headers=headers)
 
         if response.status_code != 200:
             print(f"HTTP {response.status_code}: {response.text}")
