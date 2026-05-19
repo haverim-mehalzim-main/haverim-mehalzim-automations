@@ -52,7 +52,8 @@ For local development, create a `.env` file (already in `.gitignore`) with your 
 | `REGISTRATION_BOARD_ID` | Volunteer onboarding |
 | `VOLUNTEERS_BOARD_ID` | Volunteer onboarding |
 | `BREVO_API_KEY` | All automations |
-| `GMAIL_FROM` | All automations |
+| `GMAIL_FROM` | All automations (sender email address, must be verified in Brevo) |
+| `GMAIL_FROM_NAME` | All automations (sender display name, e.g. "חברים מחלצים") |
 | `RON_EMAIL` | Weekly summary |
 | `ANTHROPIC_API_KEY` | Volunteer onboarding |
 | `ADMIN_EMAIL` | Volunteer onboarding (error alert recipient) |

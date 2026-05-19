@@ -27,5 +27,6 @@ jobs:
           BOARD_ID:         ${{ secrets.BOARD_ID }}
           BREVO_API_KEY:    ${{ secrets.BREVO_API_KEY }}
           GMAIL_FROM:       ${{ secrets.GMAIL_FROM }}
+          GMAIL_FROM_NAME:  ${{ secrets.GMAIL_FROM_NAME }}
           RON_EMAIL:        ${{ secrets.RON_EMAIL }}
         run: python -m automations.weekly_summary.main

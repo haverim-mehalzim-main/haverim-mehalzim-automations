@@ -12,7 +12,7 @@ def send_email(to_email, subject, html_body):
         "https://api.brevo.com/v3/smtp/email",
         headers={"api-key": api_key, "Content-Type": "application/json"},
         json={
-            "sender":      {"email": from_email},
+            "sender":      {"name": os.getenv("GMAIL_FROM_NAME", "חברים מחלצים"), "email": from_email},
             "to":          [{"email": to_email}],
             "subject":     subject,
             "htmlContent": html_body,

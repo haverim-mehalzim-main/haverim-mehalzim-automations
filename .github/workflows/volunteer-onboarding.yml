@@ -29,6 +29,7 @@ jobs:
           VOLUNTEERS_BOARD_ID:   ${{ secrets.VOLUNTEERS_BOARD_ID }}
           BREVO_API_KEY:         ${{ secrets.BREVO_API_KEY }}
           GMAIL_FROM:            ${{ secrets.GMAIL_FROM }}
+          GMAIL_FROM_NAME:       ${{ secrets.GMAIL_FROM_NAME }}
           WHATSABLE_API_KEY:     ${{ secrets.WHATSABLE_API_KEY }}
           PHONE_NUMBER:          ${{ secrets.PHONE_NUMBER }}
           ANTHROPIC_API_KEY:     ${{ secrets.ANTHROPIC_API_KEY }}
