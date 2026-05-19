@@ -5,9 +5,14 @@ on:
     - cron: '*/5 * * * *'  # every 5 minutes
   workflow_dispatch:        # manual trigger for testing
 
+concurrency:
+  group: volunteer-onboarding
+  cancel-in-progress: false  # queue runs, never cancel a run that's mid-processing
+
 jobs:
   onboard:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
