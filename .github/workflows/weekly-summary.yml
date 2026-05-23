@@ -1,11 +1,7 @@
 name: Weekly Incident Summary
 
 on:
-  schedule:
-    # 10:00 UTC = 12:00 Israel summer time (UTC+2, Mar–Oct)
-    # 10:00 UTC = 13:00 Israel winter time (UTC+3, Nov–Mar) — 1 hour late in winter
-    - cron: '0 10 * * 5'
-  workflow_dispatch:       # Manual trigger for testing
+  workflow_dispatch:  # triggered by cron-job.org every Friday at 12:00 Israel time
 
 jobs:
   send-summary:
