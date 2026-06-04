@@ -1,7 +1,7 @@
 name: Monthly Stats Report
 
 on:
-  workflow_dispatch:  # triggered by cron-job.org on the 30th of every month
+  workflow_dispatch:  # triggered by cron-job.org on the last day of every month
 
 jobs:
   send-monthly-stats:

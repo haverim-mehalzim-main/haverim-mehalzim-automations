@@ -1,7 +1,7 @@
 """Monthly stats email ("דוח חודשי").
 
-Computes, over the last 30 days:
-  • total volunteers + how many joined in the last 30 days ("הצטרפו בחודש האחרון")
+Computes, over the current calendar month (1st of the month → run day):
+  • total volunteers + how many joined this month ("הצטרפו החודש")
   • number of incidents, broken down by type
   • number of countries we operated in
 
@@ -25,12 +25,17 @@ from shared.monday_client import fetch_all_board_items, fetch_incidents_in_range
 from shared.email_client import send_email
 from shared.incidents import labels, colors_by_label
 
+# Force UTF-8 console output so Hebrew / "→" don't crash on Windows (cp1252).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 load_dotenv()
 
 VOLUNTEERS_BOARD_ID = os.getenv("VOLUNTEERS_BOARD_ID")
 SHAHAR_EMAIL        = os.getenv("SHAHAR_EMAIL")
-
-WINDOW_DAYS = 30
 
 # Volunteers board join-date column (set by the onboarding automation).
 COL_JOINED_AT = "date4"
@@ -110,8 +115,8 @@ def build_html(total_volunteers, joined_recent, total_incidents,
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;">
       <tr>
         {_stat_tile(_fmt(total_volunteers), "סה״כ מתנדבים", "#2c3e50")}
-        {_stat_tile(_fmt(joined_recent), "הצטרפו בחודש האחרון", "#27AE60")}
-        {_stat_tile(_fmt(total_incidents), "אירועים (30 יום)", "#E2574C")}
+        {_stat_tile(_fmt(joined_recent), "הצטרפו החודש", "#27AE60")}
+        {_stat_tile(_fmt(total_incidents), "אירועים החודש", "#E2574C")}
         {_stat_tile(_fmt(len(country_counts)), "מדינות פעילות", "#2E86C1")}
       </tr>
     </table>"""
@@ -189,8 +194,14 @@ def build_html(total_volunteers, joined_recent, total_incidents,
 </html>"""
 
 
+def _is_last_day_of_month(now):
+    """True if `now` falls on the final calendar day of its month."""
+    return (now + timedelta(days=1)).day == 1
+
+
 def main():
-    recipient = sys.argv[1] if len(sys.argv) > 1 else SHAHAR_EMAIL
+    test_recipient = sys.argv[1] if len(sys.argv) > 1 else None
+    recipient = test_recipient or SHAHAR_EMAIL
     if not recipient:
         print("No recipient: pass one as an argument or set SHAHAR_EMAIL.")
         return
@@ -198,8 +209,15 @@ def main():
         print("VOLUNTEERS_BOARD_ID is not set.")
         return
 
+    # Scheduled (prod) runs only fire on the last day of the month — the cron
+    # trigger runs daily and this guard skips every other day. A test-send
+    # (explicit recipient argument) always runs.
+    if not test_recipient and not _is_last_day_of_month(datetime.now()):
+        print(f"Not the last day of the month ({datetime.now():%Y-%m-%d}) — skipping.")
+        return
+
     end    = datetime.now()
-    start  = end - timedelta(days=WINDOW_DAYS)
+    start  = end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     print("Fetching volunteers...")
     volunteers = fetch_all_board_items(VOLUNTEERS_BOARD_ID)

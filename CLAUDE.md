@@ -11,7 +11,7 @@ The repo is public so GitHub Actions runs are **unlimited and free**.
 automations/
   weekly_summary/main.py        ← runs every Friday at 12:00 Israel time
   volunteer_onboarding/main.py  ← runs every 5 minutes, processes new registrations
-  monthly_stats/main.py         ← runs on the 30th of every month, emails a monthly stats report
+  monthly_stats/main.py         ← runs on the last day of every month, emails a monthly stats report
 shared/
   monday_client.py   ← Monday.com API: fetch items, create items, mark processed
   email_client.py    ← Brevo: send HTML emails
@@ -38,7 +38,7 @@ shared/
 python -m automations.weekly_summary.main
 python -m automations.volunteer_onboarding.main
 
-# Monthly stats report (scheduled on the 30th; pass a recipient to test-send):
+# Monthly stats report (scheduled on the last day of the month; pass a recipient to test-send):
 python -m automations.monthly_stats.main someone@example.com   # test → that address
 python -m automations.monthly_stats.main                        # prod → SHAHAR_EMAIL
 ```
