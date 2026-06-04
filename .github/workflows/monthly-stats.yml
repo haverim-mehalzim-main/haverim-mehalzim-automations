@@ -1,0 +1,29 @@
+name: Monthly Stats Report
+
+on:
+  workflow_dispatch:  # triggered by cron-job.org on the 30th of every month
+
+jobs:
+  send-monthly-stats:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run monthly stats report
+        env:
+          MONDAY_API_KEY:      ${{ secrets.MONDAY_API_KEY }}
+          BOARD_ID:            ${{ secrets.BOARD_ID }}
+          VOLUNTEERS_BOARD_ID: ${{ secrets.VOLUNTEERS_BOARD_ID }}
+          BREVO_API_KEY:       ${{ secrets.BREVO_API_KEY }}
+          GMAIL_FROM:          ${{ secrets.GMAIL_FROM }}
+          GMAIL_FROM_NAME:     ${{ secrets.GMAIL_FROM_NAME }}
+          SHAHAR_EMAIL:        ${{ secrets.SHAHAR_EMAIL }}
+        run: python -m automations.monthly_stats.main

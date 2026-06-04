@@ -2,6 +2,22 @@ import json
 import anthropic
 
 
+def _extract_json(raw: str) -> dict:
+    """Strip ``` fences and parse a JSON object out of an LLM response."""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        parts = raw.split("```")
+        raw = parts[1] if len(parts) > 1 else parts[0]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        print("LLM returned non-JSON response")
+        return {}
+
+
 def match_departments(volunteer: dict) -> dict:
     client = anthropic.Anthropic()
 
@@ -47,15 +63,4 @@ Note: the volunteer interests fields will have more detailed mapping added in th
         messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = response.content[0].text.strip()
-    if raw.startswith("```"):
-        parts = raw.split("```")
-        raw = parts[1] if len(parts) > 1 else parts[0]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        print("LLM returned non-JSON response")
-        return {}
+    return _extract_json(response.content[0].text)

@@ -55,6 +55,64 @@ def fetch_board_items(board_id):
     return results
 
 
+def fetch_all_board_items(board_id):
+    """Fetch every item on a board, following the items_page cursor across pages.
+
+    Unlike fetch_board_items (capped at 500), this paginates so totals are exact.
+    Returns a list of rows: {"id", "name", "created_at", <column_id>: text, ...}.
+    """
+    first_query = """
+    query($board_id: [ID!]) {
+      boards(ids: $board_id) {
+        items_page(limit: 500) {
+          cursor
+          items {
+            id
+            name
+            created_at
+            column_values { id text }
+          }
+        }
+      }
+    }
+    """
+    next_query = """
+    query($cursor: String!) {
+      next_items_page(limit: 500, cursor: $cursor) {
+        cursor
+        items {
+          id
+          name
+          created_at
+          column_values { id text }
+        }
+      }
+    }
+    """
+
+    def _flatten(items):
+        rows = []
+        for item in items:
+            row = {"id": item["id"], "name": item["name"], "created_at": item.get("created_at", "")}
+            for cv in item["column_values"]:
+                row[cv["id"]] = cv["text"]
+            rows.append(row)
+        return rows
+
+    data = _run_query(first_query, {"board_id": [str(board_id)]})
+    page = data["boards"][0]["items_page"]
+    results = _flatten(page["items"])
+    cursor = page.get("cursor")
+
+    while cursor:
+        data = _run_query(next_query, {"cursor": cursor})
+        page = data["next_items_page"]
+        results.extend(_flatten(page["items"]))
+        cursor = page.get("cursor")
+
+    return results
+
+
 def fetch_item_by_id(item_id):
     query = """
     query($item_id: [ID!]) {
@@ -145,9 +203,13 @@ def _build_incidents_query(board_id):
 """ % (board_id, _COL_IDS)
 
 
-def fetch_last_week_incidents():
-    board_id = os.getenv("BOARD_ID")
-    cutoff   = datetime.now() - timedelta(days=7)
+def fetch_incidents_in_range(start, end, board_id=None):
+    """Fetch incident rows whose timeline start date falls within [start, end].
+
+    `start` and `end` are datetimes. `board_id` defaults to the BOARD_ID env var.
+    Returns a list of rows, or None on failure.
+    """
+    board_id = board_id or os.getenv("BOARD_ID")
 
     if not board_id:
         print("BOARD_ID environment variable is not set.")
@@ -185,14 +247,19 @@ def fetch_last_week_incidents():
             try:
                 start_str  = timeline.split(" - ")[0].strip()
                 start_date = datetime.strptime(start_str, "%Y-%m-%d")
-                if start_date >= cutoff:
+                if start <= start_date <= end:
                     results.append(row)
             except ValueError:
                 continue
 
-        print(f"[monday_client] total={len(items)} last_week={len(results)}")
+        print(f"[monday_client] total={len(items)} in_range={len(results)}")
         return results
 
     except Exception as e:
         print(f"Error fetching Monday data: {e}")
         return None
+
+
+def fetch_last_week_incidents():
+    now = datetime.now()
+    return fetch_incidents_in_range(now - timedelta(days=7), now)

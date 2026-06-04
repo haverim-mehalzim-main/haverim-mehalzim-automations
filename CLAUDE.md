@@ -11,14 +11,17 @@ The repo is public so GitHub Actions runs are **unlimited and free**.
 automations/
   weekly_summary/main.py        ← runs every Friday at 12:00 Israel time
   volunteer_onboarding/main.py  ← runs every 5 minutes, processes new registrations
+  monthly_stats/main.py         ← runs on the 30th of every month, emails a monthly stats report
 shared/
   monday_client.py   ← Monday.com API: fetch items, create items, mark processed
   email_client.py    ← Brevo: send HTML emails
   llm_client.py      ← Claude AI: department matching
   whatsapp_client.py ← Whatsable: WhatsApp notifications
+  incidents.py       ← shared incident type/color/status map (used by the summary reports)
 .github/workflows/
   weekly-summary.yml
   volunteer-onboarding.yml
+  monthly-stats.yml
 ```
 
 ## Adding a new automation
@@ -34,6 +37,10 @@ shared/
 ```bash
 python -m automations.weekly_summary.main
 python -m automations.volunteer_onboarding.main
+
+# Monthly stats report (scheduled on the 30th; pass a recipient to test-send):
+python -m automations.monthly_stats.main someone@example.com   # test → that address
+python -m automations.monthly_stats.main                        # prod → SHAHAR_EMAIL
 ```
 
 ## Secrets
@@ -48,13 +55,14 @@ For local development, create a `.env` file (already in `.gitignore`) with your 
 | Secret | Used by |
 |--------|---------|
 | `MONDAY_API_KEY` | All automations |
-| `BOARD_ID` | Weekly summary |
+| `BOARD_ID` | Weekly summary, Monthly stats |
 | `REGISTRATION_BOARD_ID` | Volunteer onboarding |
-| `VOLUNTEERS_BOARD_ID` | Volunteer onboarding |
+| `VOLUNTEERS_BOARD_ID` | Volunteer onboarding, Monthly stats |
 | `BREVO_API_KEY` | All automations |
 | `GMAIL_FROM` | All automations (sender email address, must be verified in Brevo) |
 | `GMAIL_FROM_NAME` | All automations (sender display name, e.g. "חברים מחלצים") |
 | `RON_EMAIL` | Weekly summary |
+| `SHAHAR_EMAIL` | Monthly stats (report recipient) |
 | `ANTHROPIC_API_KEY` | Volunteer onboarding |
 | `ADMIN_EMAIL` | Volunteer onboarding (error alert recipient) |
 | `WHATSABLE_API_KEY` | Volunteer onboarding |

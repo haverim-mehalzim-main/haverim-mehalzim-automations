@@ -24,3 +24,6 @@ env/
 # OS
 Thumbs.db
 Desktop.ini
+
+# Generated monthly-stats preview
+automations/monthly_stats/preview.html

@@ -6,32 +6,15 @@ from dotenv import load_dotenv
 
 from shared.monday_client import fetch_last_week_incidents
 from shared.email_client import send_email
+from shared.incidents import labels, colors_by_label, EVENT_STATUSES
 
 load_dotenv()
 
 RON_EMAIL = os.getenv("RON_EMAIL")
 
-INCIDENT_TYPES = {
-    "רפואי":          "Medical",
-    "נפשי":           "Mental Health",
-    "חילוץ":          "Rescue",
-    "איתור":          "Search & Locate",
-    "אנטישמיות":      "Antisemitism",
-    "חברות מחלצות":   "Sexual Assault",
-    "אחר":            "Other",
-}
-
-HANDLED_STATUSES = {"נפתח אירוע", "טופל על ידי רון", "אירוע משמעותי"}
-
-TYPE_COLORS = {
-    "Medical":        "#e74c3c",
-    "Mental Health":  "#9b59b6",
-    "Rescue":         "#e67e22",
-    "Search & Locate":"#3498db",
-    "Antisemitism":   "#c0392b",
-    "Sexual Assault": "#8e44ad",
-    "Other":          "#7f8c8d",
-}
+INCIDENT_TYPES   = labels("en")          # raw status -> English label
+TYPE_COLORS      = colors_by_label("en") # English label -> color
+HANDLED_STATUSES = EVENT_STATUSES
 
 
 def build_html_summary(incidents, week_start, week_end):
