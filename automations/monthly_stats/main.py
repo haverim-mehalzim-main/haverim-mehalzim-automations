@@ -1,11 +1,17 @@
-"""Monthly stats email ("דוח חודשי").
+"""Monthly impact report ("דוח חודשי").
 
-Computes, over the current calendar month (1st of the month → run day):
-  • total volunteers + how many joined this month ("הצטרפו החודש")
-  • number of incidents, broken down by type
-  • number of countries we operated in
+Shows, side by side, both this-month activity and all-time cumulative totals,
+emailed on the last day of each month.
 
-…then emails a polished Hebrew (RTL) report.
+Headline stats (big number = all-time total, green chip = this month):
+  • registered volunteers ("מתנדבים רשומים")  +joined this month
+  • complicated cases managed — incidents whose handling status is an event
+    ("מקרים מורכבים שטופלו")  +managed this month
+  • countries we have operated in ("מדינות בהן פעלנו")  +active this month
+  • WhatsApp community members  ← filled in manually by the recipient
+  • total WhatsApp conversations ← filled in manually by the recipient
+
+…plus a by-type breakdown (this month vs. total) and a list of countries.
 
 Run locally / test (override recipient):
     python -m automations.monthly_stats.main someone@example.com
@@ -21,9 +27,9 @@ from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 
-from shared.monday_client import fetch_all_board_items, fetch_incidents_in_range
+from shared.monday_client import fetch_all_board_items
 from shared.email_client import send_email
-from shared.incidents import labels, colors_by_label
+from shared.incidents import labels, colors_by_label, EVENT_STATUSES
 
 # Force UTF-8 console output so Hebrew / "→" don't crash on Windows (cp1252).
 for _stream in (sys.stdout, sys.stderr):
@@ -35,14 +41,24 @@ for _stream in (sys.stdout, sys.stderr):
 load_dotenv()
 
 VOLUNTEERS_BOARD_ID = os.getenv("VOLUNTEERS_BOARD_ID")
+BOARD_ID            = os.getenv("BOARD_ID")            # incidents board
 SHAHAR_EMAIL        = os.getenv("SHAHAR_EMAIL")
 
 # Volunteers board join-date column (set by the onboarding automation).
 COL_JOINED_AT = "date4"
 
+# Incidents board columns.
+COL_TYPE     = "status_mkmb1zc6"     # incident type (רפואי / חילוץ / …)
+COL_EVENT    = "color_mkvvrm1r"      # handling status (נפתח אירוע / טופל …)
+COL_COUNTRY  = "country_mkmb91h3"    # country
+COL_TIMELINE = "timeline_mkmbcabh"   # incident date range "YYYY-MM-DD - YYYY-MM-DD"
+
 # Incident type (status_mkmb1zc6) → Hebrew label / accent color.
 _HE_LABELS = labels("he")
 _HE_COLORS = colors_by_label("he")
+
+# WhatsApp brand green, used for the manual-entry tiles and the "this month" chips.
+_WA_GREEN = "#1e8449"
 
 
 def _fmt(n):
@@ -66,64 +82,147 @@ def _parse_date(value):
             return None
 
 
-def compute_volunteer_stats(volunteers, cutoff):
+def _incident_date(inc):
+    """Start date of an incident, read from its timeline column."""
+    timeline = (inc.get(COL_TIMELINE) or "").strip()
+    if " - " in timeline:
+        timeline = timeline.split(" - ")[0].strip()
+    return _parse_date(timeline)
+
+
+def compute_volunteer_stats(volunteers, month_start, as_of):
     total = len(volunteers)
-    joined_recent = 0
+    joined_this_month = 0
     for v in volunteers:
         joined = _parse_date(v.get(COL_JOINED_AT)) or _parse_date(v.get("created_at"))
-        if joined and joined >= cutoff:
-            joined_recent += 1
-    return total, joined_recent
+        if joined and month_start <= joined <= as_of:
+            joined_this_month += 1
+    return total, joined_this_month
 
 
-def compute_incident_stats(incidents):
-    type_counts = Counter()
+def compute_incident_stats(incidents, month_start, as_of):
+    """All-time + this-month stats from every incident on the board.
+
+    Managed cases (and their by-type breakdown) cover incidents whose handling
+    status is in EVENT_STATUSES; countries cover every incident with a country.
+    """
+    def is_this_month(inc):
+        d = _incident_date(inc)
+        return d is not None and month_start <= d <= as_of
+
+    managed = [inc for inc in incidents if (inc.get(COL_EVENT) or "").strip() in EVENT_STATUSES]
+
+    type_total = Counter()
+    type_month = Counter()
+    for inc in managed:
+        label = _HE_LABELS.get((inc.get(COL_TYPE) or "").strip(), "אחר")
+        type_total[label] += 1
+        if is_this_month(inc):
+            type_month[label] += 1
+
+    country_total = Counter()
+    country_month = Counter()
     for inc in incidents:
-        raw = inc.get("status_mkmb1zc6", "")
-        type_counts[_HE_LABELS.get(raw, "אחר")] += 1
+        c = (inc.get(COL_COUNTRY) or "").strip()
+        if not c:
+            continue
+        country_total[c] += 1
+        if is_this_month(inc):
+            country_month[c] += 1
 
-    country_counts = Counter()
-    for inc in incidents:
-        c = (inc.get("country_mkmb91h3") or "").strip()
-        if c:
-            country_counts[c] += 1
-
-    return type_counts, country_counts
+    return {
+        "cases_total":   len(managed),
+        "cases_month":   sum(type_month.values()),
+        "type_total":    type_total,
+        "type_month":    type_month,
+        "country_total": country_total,
+        "country_month": country_month,
+    }
 
 
 # ── HTML ────────────────────────────────────────────────────────────────────
-
-def _stat_tile(value, label, color):
-    return f"""
-      <td style="padding:8px;" align="center" valign="top">
-        <div style="background:#f7f9fb;border:1px solid #eceff3;border-radius:12px;padding:18px 10px;">
-          <div style="font-size:36px;font-weight:800;line-height:1;color:{color};">{value}</div>
-          <div style="font-size:13px;color:#7f8c8d;margin-top:8px;">{label}</div>
-        </div>
-      </td>"""
-
 
 def _color_for(label):
     return _HE_COLORS.get(label, "#7f8c8d")
 
 
-def build_html(total_volunteers, joined_recent, total_incidents,
-               type_counts, country_counts, start, end):
-    period = f"{start.strftime('%d/%m/%Y')} – {end.strftime('%d/%m/%Y')}"
+def _chip(text, *, bg="#eafaf1", color=_WA_GREEN):
+    return (f'<div style="display:inline-block;background:{bg};color:{color};'
+            f'font-size:11px;font-weight:700;border-radius:20px;padding:3px 10px;'
+            f'margin-top:10px;">{text}</div>')
 
-    stat_band = f"""
+
+def _tile(value, label, color, width, *, big=False, note=None, badge=None, delta=None):
+    num_size   = "40px" if big else "34px"
+    badge_html = ("" if not badge else
+                  f'<div style="margin-bottom:10px;">{_chip(badge)}</div>')
+    note_html  = ("" if not note else
+                  f'<div style="font-size:11px;color:#9aa7b2;margin-top:10px;line-height:1.6;">{note}</div>')
+    delta_html = "" if not delta else _chip(delta)
+    return f"""
+      <td width="{width}" style="padding:8px;" align="center" valign="top">
+        <div style="background:#f7f9fb;border:1px solid #eceff3;border-radius:14px;padding:22px 12px;">
+          {badge_html}
+          <div style="font-size:{num_size};font-weight:800;line-height:1;color:{color};">{value}</div>
+          <div style="font-size:13px;color:#7f8c8d;margin-top:9px;font-weight:600;">{label}</div>
+          {delta_html}{note_html}
+        </div>
+      </td>"""
+
+
+def _section(title, body):
+    return f"""
+    <div style="margin-top:30px;">
+      <h2 style="margin:0 0 14px;font-size:17px;color:#1a252f;font-weight:700;
+                 border-bottom:2px solid #E2574C;display:inline-block;padding-bottom:7px;">{title}</h2>
+      {body}
+    </div>"""
+
+
+def build_html(registered_volunteers, joined_this_month, inc, as_of):
+    cases_total   = inc["cases_total"]
+    cases_month   = inc["cases_month"]
+    type_total    = inc["type_total"]
+    type_month    = inc["type_month"]
+    country_total = inc["country_total"]
+    country_month = inc["country_month"]
+
+    # ── Headline tiles: cumulative number + this-month chip ───────────────────
+    hero = f"""
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;">
       <tr>
-        {_stat_tile(_fmt(total_volunteers), "סה״כ מתנדבים", "#2c3e50")}
-        {_stat_tile(_fmt(joined_recent), "הצטרפו החודש", "#27AE60")}
-        {_stat_tile(_fmt(total_incidents), "אירועים החודש", "#E2574C")}
-        {_stat_tile(_fmt(len(country_counts)), "מדינות פעילות", "#2E86C1")}
+        {_tile(_fmt(registered_volunteers), "מתנדבים רשומים", "#2c3e50", "33.33%",
+               big=True, delta=f"+{_fmt(joined_this_month)} החודש")}
+        {_tile(_fmt(cases_total), "מקרים מורכבים שטופלו", "#E2574C", "33.33%",
+               big=True, delta=f"+{_fmt(cases_month)} החודש")}
+        {_tile(_fmt(len(country_total)), "מדינות בהן פעלנו", "#2E86C1", "33.33%",
+               big=True, delta=f"{_fmt(len(country_month))} החודש")}
       </tr>
-    </table>"""
+    </table>
+    <div style="text-align:center;font-size:11px;color:#9aa7b2;margin-top:6px;">
+      המספר הגדול = סה״כ מאז ההקמה · התווית הירוקה = פעילות החודש
+    </div>"""
 
-    if type_counts:
+    # ── WhatsApp block: 2 manual-entry tiles ─────────────────────────────────
+    whatsapp = f"""
+    <div style="margin-top:22px;background:#f3fbf6;border:1px solid #d8f0e2;border-radius:16px;padding:8px 12px 14px;">
+      <div style="padding:14px 8px 4px;font-size:15px;font-weight:700;color:{_WA_GREEN};">
+        💬 קהילת הוואטסאפ
+      </div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;">
+        <tr>
+          {_tile("—", "חברי קהילת הוואטסאפ", _WA_GREEN, "50%",
+                 note="למילוי ידני — מספר החברים בקבוצת/קהילת הוואטסאפ", badge="✍️ לעדכון")}
+          {_tile("—", "סה״כ שיחות בוואטסאפ", _WA_GREEN, "50%",
+                 note="למילוי ידני — ספירת מספר השיחות בחשבון ה-WhatsApp Business", badge="✍️ לעדכון")}
+        </tr>
+      </table>
+    </div>"""
+
+    # ── Cases by type: this month vs. total ──────────────────────────────────
+    if type_total:
         rows = ""
-        for label, n in type_counts.most_common():
+        for label, n in type_total.most_common():
             color = _color_for(label)
             rows += f"""
             <tr>
@@ -132,39 +231,48 @@ def build_html(total_volunteers, joined_recent, total_incidents,
                              background:{color};margin-left:8px;"></span>{label}
               </td>
               <td style="padding:9px 12px;border-bottom:1px solid #ecf0f1;font-size:14px;
-                         font-weight:700;color:{color};" align="left">{_fmt(n)}</td>
+                         color:{_WA_GREEN};font-weight:700;" align="center">{_fmt(type_month.get(label, 0))}</td>
+              <td style="padding:9px 12px;border-bottom:1px solid #ecf0f1;font-size:14px;
+                         font-weight:700;color:{color};" align="center">{_fmt(n)}</td>
             </tr>"""
         types_html = f"""
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
           <tr style="background:#f8f9fa;">
-            <th style="padding:9px 12px;text-align:right;color:#666;font-size:13px;font-weight:600;">סוג האירוע</th>
-            <th style="padding:9px 12px;text-align:left;color:#666;font-size:13px;font-weight:600;">מספר</th>
+            <th style="padding:9px 12px;text-align:right;color:#666;font-size:13px;font-weight:600;">סוג המקרה</th>
+            <th style="padding:9px 12px;text-align:center;color:{_WA_GREEN};font-size:13px;font-weight:700;">החודש</th>
+            <th style="padding:9px 12px;text-align:center;color:#666;font-size:13px;font-weight:600;">סה״כ</th>
           </tr>
           {rows}
+          <tr style="background:#fbfcfd;">
+            <td style="padding:10px 12px;font-size:14px;font-weight:800;color:#1a252f;">סה״כ</td>
+            <td style="padding:10px 12px;font-size:14px;font-weight:800;color:{_WA_GREEN};" align="center">{_fmt(cases_month)}</td>
+            <td style="padding:10px 12px;font-size:14px;font-weight:800;color:#1a252f;" align="center">{_fmt(cases_total)}</td>
+          </tr>
         </table>"""
     else:
-        types_html = '<p style="color:#95a5a6;font-size:14px;">לא נרשמו אירועים בתקופה זו.</p>'
+        types_html = '<p style="color:#95a5a6;font-size:14px;">לא נרשמו מקרים מטופלים.</p>'
 
-    if country_counts:
-        tags = "".join(
-            f"""<span style="display:inline-block;background:#eef4f9;border-radius:6px;
-                            padding:5px 11px;margin:3px;font-size:13px;color:#2c3e50;">
-                  {c} <strong>({n})</strong></span>"""
-            for c, n in country_counts.most_common()
-        )
-        countries_html = f"<div>{tags}</div>"
+    # ── Countries: cumulative, with this-month ones highlighted ──────────────
+    if country_total:
+        tags = ""
+        for c, n in country_total.most_common():
+            active = c in country_month
+            border = f"1px solid {_WA_GREEN}" if active else "1px solid #e3eaf1"
+            bg     = "#eafaf1" if active else "#eef4f9"
+            dot    = (f'<span style="display:inline-block;width:7px;height:7px;border-radius:50%;'
+                      f'background:{_WA_GREEN};margin-left:6px;"></span>' if active else "")
+            tags += (f'<span style="display:inline-block;background:{bg};border:{border};border-radius:6px;'
+                     f'padding:5px 11px;margin:3px;font-size:13px;color:#2c3e50;">'
+                     f'{dot}{c} <strong>({n})</strong></span>')
+        caption = (f'<div style="font-size:12px;color:#7f8c8d;margin-bottom:10px;">'
+                   f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;'
+                   f'background:{_WA_GREEN};margin-left:6px;"></span>'
+                   f'מתוכן, החודש פעלנו ב-{_fmt(len(country_month))} מדינות</div>')
+        countries_html = caption + f"<div>{tags}</div>"
     else:
-        countries_html = '<p style="color:#95a5a6;font-size:14px;">לא נרשמו מדינות בתקופה זו.</p>'
+        countries_html = '<p style="color:#95a5a6;font-size:14px;">לא נרשמו מדינות.</p>'
 
-    def section(title, body):
-        return f"""
-        <div style="margin-top:28px;">
-          <h2 style="margin:0 0 14px;font-size:17px;color:#1a252f;font-weight:700;
-                     border-bottom:2px solid #E2574C;display:inline-block;padding-bottom:7px;">{title}</h2>
-          {body}
-        </div>"""
-
-    generated = datetime.now().strftime("%d/%m/%Y")
+    generated = as_of.strftime("%d/%m/%Y")
 
     return f"""<!DOCTYPE html>
 <html lang="he" dir="rtl">
@@ -176,13 +284,14 @@ def build_html(total_volunteers, joined_recent, total_incidents,
     <div style="background:linear-gradient(135deg,#1a252f 0%,#2c3e50 100%);padding:30px 36px;">
       <div style="font-size:12px;letter-spacing:2px;color:#9fb1c1;text-transform:uppercase;">דוח חודשי</div>
       <h1 style="margin:6px 0 4px;font-size:26px;color:#fff;font-weight:800;">חברים מחלצים</h1>
-      <div style="font-size:15px;color:#cdd7e0;">{period}</div>
+      <div style="font-size:15px;color:#cdd7e0;">חודש {as_of:%m/%Y} · החודש מול המצטבר · נכון ל-{generated}</div>
     </div>
 
     <div style="padding:28px 36px;">
-      {stat_band}
-      {section("אירועים לפי סוג", types_html)}
-      {section("מדינות בהן פעלנו", countries_html)}
+      {hero}
+      {whatsapp}
+      {_section("מקרים מורכבים לפי סוג", types_html)}
+      {_section("מדינות בהן פעלנו", countries_html)}
     </div>
 
     <div style="background:#f7f9fb;padding:16px 36px;text-align:center;
@@ -208,6 +317,9 @@ def main():
     if not VOLUNTEERS_BOARD_ID:
         print("VOLUNTEERS_BOARD_ID is not set.")
         return
+    if not BOARD_ID:
+        print("BOARD_ID is not set.")
+        return
 
     # Scheduled (prod) runs only fire on the last day of the month — the cron
     # trigger runs daily and this guard skips every other day. A test-send
@@ -216,28 +328,24 @@ def main():
         print(f"Not the last day of the month ({datetime.now():%Y-%m-%d}) — skipping.")
         return
 
-    end    = datetime.now()
-    start  = end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    as_of       = datetime.now()
+    month_start = as_of.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     print("Fetching volunteers...")
     volunteers = fetch_all_board_items(VOLUNTEERS_BOARD_ID)
-    total_volunteers, joined_recent = compute_volunteer_stats(volunteers, start)
+    registered_volunteers, joined_this_month = compute_volunteer_stats(volunteers, month_start, as_of)
 
-    print(f"Fetching incidents {start:%Y-%m-%d} → {end:%Y-%m-%d}...")
-    incidents = fetch_incidents_in_range(start, end)
-    if incidents is None:
-        print("Failed to fetch incidents from Monday — aborting.")
-        return
+    print("Fetching all incidents (all-time)...")
+    incidents = fetch_all_board_items(BOARD_ID)
+    inc = compute_incident_stats(incidents, month_start, as_of)
 
-    type_counts, country_counts = compute_incident_stats(incidents)
-    total_incidents = len(incidents)
+    print(f"volunteers={registered_volunteers} (+{joined_this_month} this month) "
+          f"cases={inc['cases_total']} (+{inc['cases_month']} this month) "
+          f"countries={len(inc['country_total'])} (+{len(inc['country_month'])} this month) "
+          f"from {len(incidents)} incidents")
 
-    print(f"volunteers={total_volunteers} joined_30d={joined_recent} "
-          f"incidents={total_incidents} countries={len(country_counts)}")
-
-    html = build_html(total_volunteers, joined_recent, total_incidents,
-                      type_counts, country_counts, start, end)
-    subject = f"חברים מחלצים — דוח חודשי ({start:%d/%m} – {end:%d/%m/%Y})"
+    html = build_html(registered_volunteers, joined_this_month, inc, as_of)
+    subject = f"חברים מחלצים — דוח חודשי ({as_of:%m/%Y})"
 
     print(f"Sending report to {recipient}...")
     send_email(recipient, subject, html)
