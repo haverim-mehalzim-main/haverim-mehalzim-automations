@@ -60,6 +60,11 @@ _HE_COLORS = colors_by_label("he")
 # WhatsApp brand green, used for the manual-entry tiles and the "this month" chips.
 _WA_GREEN = "#1e8449"
 
+# Incidents/cases handled by us but never recorded on the board (managed
+# offline / historically). Surfaced as a bracketed footnote on those tiles.
+UNTRACKED_MANAGED = 32
+_UNTRACKED_NOTE   = f"(+{UNTRACKED_MANAGED} שטופלו ולא תועדו)"
+
 
 def _fmt(n):
     try:
@@ -130,7 +135,14 @@ def compute_incident_stats(incidents, month_start, as_of):
         if is_this_month(inc):
             country_month[c] += 1
 
+    # All incidents — no handling-status filter, including ones we didn't open
+    # a case for. This is the superset of the "managed cases" count above.
+    incidents_total = len(incidents)
+    incidents_month = sum(1 for inc in incidents if is_this_month(inc))
+
     return {
+        "incidents_total": incidents_total,
+        "incidents_month": incidents_month,
         "cases_total":   len(managed),
         "cases_month":   sum(type_month.values()),
         "type_total":    type_total,
@@ -152,10 +164,12 @@ def _chip(text, *, bg="#eafaf1", color=_WA_GREEN):
             f'margin-top:10px;">{text}</div>')
 
 
-def _tile(value, label, color, width, *, big=False, note=None, badge=None, delta=None):
+def _tile(value, label, color, width, *, big=False, note=None, badge=None, delta=None, sub=None):
     num_size   = "40px" if big else "34px"
     badge_html = ("" if not badge else
                   f'<div style="margin-bottom:10px;">{_chip(badge)}</div>')
+    sub_html   = ("" if not sub else
+                  f'<div style="font-size:11px;color:#9aa7b2;margin-top:5px;">{sub}</div>')
     note_html  = ("" if not note else
                   f'<div style="font-size:11px;color:#9aa7b2;margin-top:10px;line-height:1.6;">{note}</div>')
     delta_html = "" if not delta else _chip(delta)
@@ -164,6 +178,7 @@ def _tile(value, label, color, width, *, big=False, note=None, badge=None, delta
         <div style="background:#f7f9fb;border:1px solid #eceff3;border-radius:14px;padding:22px 12px;">
           {badge_html}
           <div style="font-size:{num_size};font-weight:800;line-height:1;color:{color};">{value}</div>
+          {sub_html}
           <div style="font-size:13px;color:#7f8c8d;margin-top:9px;font-weight:600;">{label}</div>
           {delta_html}{note_html}
         </div>
@@ -180,6 +195,8 @@ def _section(title, body):
 
 
 def build_html(registered_volunteers, joined_this_month, inc, as_of):
+    incidents_total = inc["incidents_total"]
+    incidents_month = inc["incidents_month"]
     cases_total   = inc["cases_total"]
     cases_month   = inc["cases_month"]
     type_total    = inc["type_total"]
@@ -191,11 +208,13 @@ def build_html(registered_volunteers, joined_this_month, inc, as_of):
     hero = f"""
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;">
       <tr>
-        {_tile(_fmt(registered_volunteers), "מתנדבים רשומים", "#2c3e50", "33.33%",
+        {_tile(_fmt(registered_volunteers), "מתנדבים רשומים", "#2c3e50", "25%",
                big=True, delta=f"+{_fmt(joined_this_month)} החודש")}
-        {_tile(_fmt(cases_total), "מקרים מורכבים שטופלו", "#E2574C", "33.33%",
-               big=True, delta=f"+{_fmt(cases_month)} החודש")}
-        {_tile(_fmt(len(country_total)), "מדינות בהן פעלנו", "#2E86C1", "33.33%",
+        {_tile(_fmt(incidents_total), "סה״כ אירועים", "#E67E22", "25%",
+               big=True, sub=_UNTRACKED_NOTE, delta=f"+{_fmt(incidents_month)} החודש")}
+        {_tile(_fmt(cases_total), "מקרים מורכבים שטופלו", "#E2574C", "25%",
+               big=True, sub=_UNTRACKED_NOTE, delta=f"+{_fmt(cases_month)} החודש")}
+        {_tile(_fmt(len(country_total)), "מדינות בהן פעלנו", "#2E86C1", "25%",
                big=True, delta=f"{_fmt(len(country_month))} החודש")}
       </tr>
     </table>
@@ -340,9 +359,9 @@ def main():
     inc = compute_incident_stats(incidents, month_start, as_of)
 
     print(f"volunteers={registered_volunteers} (+{joined_this_month} this month) "
+          f"incidents={inc['incidents_total']} (+{inc['incidents_month']} this month) "
           f"cases={inc['cases_total']} (+{inc['cases_month']} this month) "
-          f"countries={len(inc['country_total'])} (+{len(inc['country_month'])} this month) "
-          f"from {len(incidents)} incidents")
+          f"countries={len(inc['country_total'])} (+{len(inc['country_month'])} this month)")
 
     html = build_html(registered_volunteers, joined_this_month, inc, as_of)
     subject = f"חברים מחלצים — דוח חודשי ({as_of:%m/%Y})"
