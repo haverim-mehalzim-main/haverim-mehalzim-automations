@@ -145,7 +145,28 @@ def build_welcome_email(volunteer):
 </html>"""
 
 
+def _whatsapp_link(phone):
+    """Turn a raw phone number into a wa.me link WhatsApp renders as a tappable
+    chat link. Normalizes Israeli numbers (e.g. 050-123-4567 → 972501234567).
+
+    Only ASCII digits 0-9 are kept, so the resulting URL host/path can never be
+    influenced by form input — no URL/host injection is possible."""
+    digits = "".join(ch for ch in str(phone) if ch in "0123456789")
+    if digits.startswith("00"):          # international dialing prefix (00 + country code)
+        digits = digits[2:]
+    if not digits:
+        return ""
+    if not digits.startswith("972") and digits.startswith("0"):
+        digits = "972" + digits[1:]      # local Israeli number → international
+    return f"https://wa.me/{digits}"
+
+
 def build_whatsapp_message(volunteer):
+    phone      = volunteer['phone']
+    phone_link = _whatsapp_link(phone)
+    phone_line = f"מספר טלפון: {phone}"
+    if phone_link:
+        phone_line += f"\nצ'אט ישיר בוואטסאפ (לחצו): {phone_link}"
     return f"""מתנדב חדש מילא את הטופס שלנו!
 
 שם: {volunteer['name']}
@@ -154,7 +175,7 @@ def build_whatsapp_message(volunteer):
 רקע צבא / שירות לאומי: {volunteer['military']}
 במה רוצה להתנדב: {volunteer['interests']}
 חשבון לינקדאין: {volunteer['linkedin']}
-מספר טלפון: {volunteer['phone']}
+{phone_line}
 כתובת אימייל: {volunteer['email']}
 שפות: {volunteer['languages']}
 
