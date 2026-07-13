@@ -74,26 +74,48 @@ def is_processed(item):
     return bool(item.get(PROCESSED_COLUMN_ID, "").strip())
 
 
+def _clean_link(value):
+    """Monday link columns come back as ``"<label> - <url>"`` (e.g.
+    ``"www.linkrfin.com - https://www.linkrfin.com"``), which shows the address
+    twice. Collapse it to the single real URL. URLs never contain " - " (a space),
+    so splitting on it is safe."""
+    if not value:
+        return ""
+    parts = [p.strip() for p in str(value).split(" - ") if p.strip()]
+    if not parts:
+        return ""
+    for p in parts:                       # prefer the part with an explicit scheme
+        if "://" in p:
+            return p
+    return parts[-1]
+
+
 def extract_volunteer(item):
+    # Monday returns null (→ None) for empty columns, which would render as the
+    # literal word "None". `g()` coerces any missing/null field to "".
+    def g(key):
+        val = item.get(key)
+        return str(val) if val else ""
+
     return {
-        "id":               item.get("id", ""),
-        "name":             item.get("name", ""),
-        "location":         item.get("short_text8m97hmsb", ""),
-        "background":       item.get("long_text_mkqyb3me", ""),
-        "military":         item.get("short_textryojenfq", ""),
+        "id":               g("id"),
+        "name":             g("name"),
+        "location":         g("short_text8m97hmsb"),
+        "background":       g("long_text_mkqyb3me"),
+        "military":         g("short_textryojenfq"),
         "interests":        " | ".join(filter(None, [
-            item.get("multi_selectvzgzazus", ""),
-            item.get("multi_selectxlqwrsg1", ""),
-            item.get("multi_selectuhal084n", ""),
-            item.get("multi_selecthdfth0p3", ""),
+            g("multi_selectvzgzazus"),
+            g("multi_selectxlqwrsg1"),
+            g("multi_selectuhal084n"),
+            g("multi_selecthdfth0p3"),
         ])),
-        "linkedin":         item.get("linklmimmuok", ""),
-        "phone":            item.get("phonef70cyv01", ""),
-        "email":            item.get("emailc3bvh0j2", ""),
-        "languages":        item.get("dropdown_mkqy9ym1", ""),
-        "approval_content": item.get("single_select0lj8mys", ""),
-        "approval_location":item.get("single_selectre9vtk2", ""),
-        "created_at":       item.get("created_at", ""),
+        "linkedin":         _clean_link(g("linklmimmuok")),
+        "phone":            g("phonef70cyv01"),
+        "email":            g("emailc3bvh0j2"),
+        "languages":        g("dropdown_mkqy9ym1"),
+        "approval_content": g("single_select0lj8mys"),
+        "approval_location":g("single_selectre9vtk2"),
+        "created_at":       g("created_at"),
     }
 
 
