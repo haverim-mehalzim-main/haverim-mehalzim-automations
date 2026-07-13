@@ -305,9 +305,16 @@ def main():
 
         print(f"Processing item {item_id}")
 
+        # ── Step 1: welcome email ─────────────────────────────────────────
+        # The welcome email must never be sent twice, so the whole flow is
+        # built around sending it exactly once. If it fails we do NOT mark the
+        # item processed — the next run retries so the volunteer still gets it.
         try:
             if not volunteer["email"]:
-                raise ValueError("Volunteer has no email address — cannot process")
+                # Nothing to send without an address. Mark processed so we stop
+                # re-alerting every minute, then flag for manual handling.
+                mark_item_processed(item_id, REGISTRATION_BOARD_ID, PROCESSED_COLUMN_ID)
+                raise ValueError("Volunteer has no email address — cannot send welcome email")
 
             send_email(
                 volunteer["email"],
@@ -315,7 +322,34 @@ def main():
                 build_welcome_email(volunteer),
             )
             print(f"  ✓ Welcome email sent")
+        except Exception:
+            error_details = traceback.format_exc()
+            print(f"  ERROR sending welcome email for item {item_id} — sending alert")
+            failed_ids.append(item_id)
+            _send_error_alert(volunteer["name"], error_details)
+            continue
 
+        # ── Step 2: lock immediately so the email can never be re-sent ─────
+        try:
+            mark_item_processed(item_id, REGISTRATION_BOARD_ID, PROCESSED_COLUMN_ID)
+            print(f"  ✓ Marked as processed")
+        except Exception:
+            # If this fails the next run may re-send the welcome email. Alert
+            # loudly, but still attempt the follow-up steps below.
+            error_details = traceback.format_exc()
+            print(f"  WARNING: could not mark item {item_id} processed — duplicate email risk")
+            _send_error_alert(
+                volunteer["name"],
+                "Welcome email WAS sent but marking the registration processed FAILED — "
+                "the next run may re-send the welcome email. Please mark it manually.\n\n"
+                + error_details,
+            )
+
+        # ── Step 3: follow-up steps — best effort, no retry ────────────────
+        # The email is sent and the row is locked, so a failure here must not
+        # re-trigger the whole flow (which would duplicate the email, WhatsApp
+        # message and board row). Alert the admin to finish this one manually.
+        try:
             send_whatsapp_message(build_whatsapp_message(volunteer))
             print(f"  ✓ WhatsApp notification sent")
 
@@ -328,16 +362,17 @@ def main():
                 build_volunteer_columns(volunteer, llm_result),
             )
             print(f"  ✓ Created item in volunteers board")
-
-            # Mark processed only after all steps succeed
-            mark_item_processed(item_id, REGISTRATION_BOARD_ID, PROCESSED_COLUMN_ID)
-            print(f"  ✓ Marked as processed — done: item {item_id}")
-
+            print(f"  ✓ Done: item {item_id}")
         except Exception:
             error_details = traceback.format_exc()
-            print(f"  ERROR on item {item_id} — sending alert")
+            print(f"  ERROR in follow-up steps for item {item_id} — sending alert")
             failed_ids.append(item_id)
-            _send_error_alert(volunteer["name"], error_details)
+            _send_error_alert(
+                volunteer["name"],
+                "Welcome email was sent and the registration is marked processed, "
+                "but a follow-up step (WhatsApp / LLM / volunteers board) failed. "
+                "Please complete this volunteer manually.\n\n" + error_details,
+            )
 
     if failed_ids:
         print(f"\nFailed to process {len(failed_ids)} item(s): {', '.join(failed_ids)}")
