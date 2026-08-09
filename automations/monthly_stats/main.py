@@ -13,10 +13,10 @@ Headline stats (big number = all-time total, green chip = this month):
 
 …plus a by-type breakdown (this month vs. total) and a list of countries.
 
-Run locally / test (override recipient):
+Run locally / test (override recipients):
     python -m automations.monthly_stats.main someone@example.com
 
-Scheduled run (no arg → sends to SHAHAR_EMAIL):
+Scheduled run (no arg → sends to SHAHAR_EMAIL and RON_EMAIL):
     python -m automations.monthly_stats.main
 """
 
@@ -43,6 +43,7 @@ load_dotenv()
 VOLUNTEERS_BOARD_ID = os.getenv("VOLUNTEERS_BOARD_ID")
 BOARD_ID            = os.getenv("BOARD_ID")            # incidents board
 SHAHAR_EMAIL        = os.getenv("SHAHAR_EMAIL")
+RON_EMAIL           = os.getenv("RON_EMAIL")
 
 # Volunteers board join-date column (set by the onboarding automation).
 COL_JOINED_AT = "date4"
@@ -329,9 +330,13 @@ def _is_last_day_of_month(now):
 
 def main():
     test_recipient = sys.argv[1] if len(sys.argv) > 1 else None
-    recipient = test_recipient or SHAHAR_EMAIL
-    if not recipient:
-        print("No recipient: pass one as an argument or set SHAHAR_EMAIL.")
+    if test_recipient:
+        recipients = [test_recipient]
+    else:
+        recipients = [email for email in [SHAHAR_EMAIL, RON_EMAIL] if email]
+
+    if not recipients:
+        print("No recipients: pass one as an argument or set SHAHAR_EMAIL and/or RON_EMAIL.")
         return
     if not VOLUNTEERS_BOARD_ID:
         print("VOLUNTEERS_BOARD_ID is not set.")
@@ -366,8 +371,8 @@ def main():
     html = build_html(registered_volunteers, joined_this_month, inc, as_of)
     subject = f"חברים מחלצים — דוח חודשי ({as_of:%m/%Y})"
 
-    print(f"Sending report to {recipient}...")
-    send_email(recipient, subject, html)
+    print(f"Sending report to {', '.join(recipients)}...")
+    send_email(recipients, subject, html)
     print("Done. Report sent.")
 
 
