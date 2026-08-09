@@ -148,14 +148,10 @@ def build_welcome_email(volunteer):
       📧 <a href="mailto:info@haverimmehalzim.org">info@haverimmehalzim.org</a><br>
       📞 <a href="tel:+972506899026">+972 50-689-9026</a></p>
 
-      <p>ולסיום, זה הלינק להצטרפות לקהילה שלנו בוואטסאפ (לחצו בטלפון):<br>
-      <a href="https://chat.whatsapp.com/D2xpFLpzfnVF6kZvCH9qMa">https://chat.whatsapp.com/D2xpFLpzfnVF6kZvCH9qMa</a></p>
-
       <p>תודה על הבחירה להצטרף ולעשות טוב.<br>
       אנחנו כבר מחכים להזדמנות לפעול יחד!</p>
 
-      <p>באהבה,<br>
-      <strong>לירן מצוות קהילת המתנדבים של חברים מחלצים</strong></p>
+      <p><strong>לירן מצוות קהילת המתנדבים של חברים מחלצים</strong></p>
     </div>
 
     <div style="background:#f8f9fa;padding:16px 32px;text-align:center;
