@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 from shared.monday_client import fetch_board_items, mark_item_processed, create_board_item
 from shared.email_client import send_email
-from shared.whatsapp_client import send_whatsapp_message
+from shared.whatsapp_client import send_whatsapp_message, send_to_volunteers_group
 from shared.llm_client import match_departments
 
 load_dotenv()
@@ -346,8 +346,27 @@ def main():
         # re-trigger the whole flow (which would duplicate the email, WhatsApp
         # message and board row). Alert the admin to finish this one manually.
         try:
-            send_whatsapp_message(build_whatsapp_message(volunteer))
+            whatsapp_text = build_whatsapp_message(volunteer)
+            send_whatsapp_message(whatsapp_text)
             print(f"  ✓ WhatsApp notification sent")
+
+            # Optional: same message to the volunteers WhatsApp group, via the
+            # incident-management bot (Whatsable can't address a group by name).
+            # Off unless AGENT_BASE_URL is set. Best effort, so a failure never
+            # blocks the LLM / volunteers-board steps. item_id is the bot's
+            # dedupe key, so a retry can't post twice.
+            if os.getenv("AGENT_BASE_URL"):
+                try:
+                    delivered = send_to_volunteers_group(item_id, whatsapp_text)
+                    print("  ✓ WhatsApp group notification sent" if delivered
+                          else "  ✓ WhatsApp group notification queued by the bot")
+                except Exception:
+                    print(f"  WARNING: WhatsApp group notification failed")
+                    _send_error_alert(
+                        volunteer["name"],
+                        "WhatsApp group notification failed (other steps continued).\n\n"
+                        + traceback.format_exc(),
+                    )
 
             llm_result = _match_departments_with_retry(volunteer)
             print(f"  ✓ LLM processing done")
