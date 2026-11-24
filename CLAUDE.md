@@ -67,3 +67,5 @@ For local development, create a `.env` file (already in `.gitignore`) with your 
 | `ADMIN_EMAIL` | Volunteer onboarding (error alert recipient) |
 | `WHATSABLE_API_KEY` | Volunteer onboarding |
 | `PHONE_NUMBER` | Volunteer onboarding (WhatsApp notification recipient) |
+| `AGENT_BASE_URL` | Volunteer onboarding (optional — public URL of the incident-management bot, no path; unset = no group message) |
+| `AGENT_API_SECRET` | Volunteer onboarding (optional — shared secret with the bot, same value as the bot's `AGENT_API_SECRET`) |
